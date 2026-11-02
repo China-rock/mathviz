@@ -2,7 +2,7 @@
   {
     "file": "t_gui_samples.py",
     "code": 0,
-    "seconds": 2.2,
+    "seconds": 2.6,
     "traceback": false,
     "tail": [
       "PASS 示例目录可解析（samples/，1 份课件） | 菜单项存在 | 一键载入成功（1345 字符） | 课件标签与运行日志均已标注来源"
@@ -11,12 +11,12 @@
   {
     "file": "t_bug_render_timeout.py",
     "code": 0,
-    "seconds": 5.5,
+    "seconds": 5.4,
     "traceback": false,
     "tail": [
-      "render 返回：ok=False 耗时 5.2s",
+      "render 返回：ok=False 耗时 5.1s",
       "提示：[错误] 渲染超时（>3s，已终止渲染进程）",
-      "PASS 超时生效（5.2s ≤ 阈值+2.5s）"
+      "PASS 超时生效（5.1s ≤ 阈值+2.5s）"
     ]
   },
   {
@@ -31,7 +31,7 @@
   {
     "file": "t_gui_d2.py",
     "code": 0,
-    "seconds": 2.2,
+    "seconds": 2.3,
     "traceback": false,
     "tail": [
       "PASS 查找条（定位并选中匹配项） | 替换 / 全部替换（可撤销） | 跳转到行（越界安全） | 注释切换（整行加/去 #，来回无损） | 语法错误实时标红 + 改好即清除"
@@ -40,16 +40,16 @@
   {
     "file": "t_gui_a.py",
     "code": 0,
-    "seconds": 10.2,
+    "seconds": 8.9,
     "traceback": false,
     "tail": [
-      "PASS 画质三档 + 单一渲染入口（按钮文字跟档位走） | 分辨率换算（720p / 快检 640x360） | 分段控件（脚本共 20 段） | 渲染进度条 | 版式快检真渲染 -> 4 张定格（用时 8s · [PNG] 4 张关键帧 -> E2E_Derivative-155534）"
+      "PASS 画质三档 + 单一渲染入口（按钮文字跟档位走） | 分辨率换算（720p / 快检 640x360） | 分段控件（脚本共 20 段） | 渲染进度条 | 版式快检真渲染 -> 4 张定格（用时 7s · [PNG] 4 张关键帧 -> E2E_Derivative-171459）"
     ]
   },
   {
     "file": "t_gui_system_theme.py",
     "code": 0,
-    "seconds": 3.0,
+    "seconds": 2.8,
     "traceback": false,
     "tail": [
       "PASS: 主题下拉三项（system/light/dark）；存储的是用户选择 system（没被改写）；跟随系统生效（深 46 → 浅 248 亮度）；锁定深色时系统切换不打扰；重启后恢复到跟随系统"
@@ -58,7 +58,7 @@
   {
     "file": "t_gui_ui_polish.py",
     "code": 0,
-    "seconds": 2.5,
+    "seconds": 2.3,
     "traceback": false,
     "tail": [
       "PASS: 单一渲染入口（btn_render 跟画质，Ctrl+Shift+R 变临时高清）；主题 QSS 覆盖 spinbox/combo/scrollbar/slider/progressbar；全屏进出后视频 item 尺寸跟齐 viewport；reparent 后延迟同步自愈"
@@ -67,7 +67,7 @@
   {
     "file": "t_gui_d5.py",
     "code": 0,
-    "seconds": 1.7,
+    "seconds": 2.3,
     "traceback": false,
     "tail": [
       "PASS 定位最后一条提问 / 回复 | 复制最后一条 / 整段对话 | 重新编辑上一条（原文回输入框 + 双向清理） | 重新生成（只丢回复、提问不重复入历史） | 删除最后一组（含呈现清单复位）"
@@ -76,7 +76,7 @@
   {
     "file": "t_gui_reg.py",
     "code": 0,
-    "seconds": 3.6,
+    "seconds": 3.7,
     "traceback": false,
     "tail": [
       "PASS 主窗口组装完整 | 对话分页 / 版本快照 / 批量三档画质 | 播放器模式进出（工作台完整还原） | 深色主题像素验证（亮度 254 → 31） | 浅色可逆 | 按钮与菜单状态同步"
@@ -85,12 +85,23 @@
   {
     "file": "t_gui_c.py",
     "code": 0,
-    "seconds": 2.4,
+    "seconds": 2.3,
     "traceback": false,
     "tail": [
       "PASS 播放增强控件随成片启用 | 倍速（0.5x~2x，时间标签显示当前倍率） | 逐帧前进/后退（33ms/帧） | A-B 循环（含端点颠倒自动换回、到 B 跳回 A） | 快捷键不抢输入框的按键（焦点在编辑器里自动让行） | 全屏进出（画面搬进顶层窗口并归位）",
       "C:\\Users\\ChRis\\Documents\\GitHub\\mathviz\\tests\\t_gui_c.py:80: DeprecationWarning: Function: 'QApplication.setActiveWindow(QWidget *act)' is marked as deprecated, please check the documentation for more information.",
       "  app.setActiveWindow(w)      # 全屏窗口销毁后活动窗口可能为空，先把主窗口扶正"
+    ]
+  },
+  {
+    "file": "t_precheck.py",
+    "code": 0,
+    "seconds": 4.4,
+    "traceback": false,
+    "tail": [
+      "  ✓ 预检测菜单动作随脚本有无启用",
+      "  ✓ 预检测结论进日志",
+      "预检测：10 项通过"
     ]
   },
   {
@@ -116,7 +127,7 @@
   {
     "file": "t_gui_w11.py",
     "code": 0,
-    "seconds": 2.6,
+    "seconds": 2.4,
     "traceback": false,
     "tail": [
       "PASS: 下拉箭头是细线条 chevron（墨迹 16.7%、跨度 4px）；SpinBox 上下箭头各占半高、位于右侧（37.2%/33.3%）；滑块是圆点手柄（独占行 8px、跨 8 行）；进度条（块 #2f6feb / 轨道 #e5e7eb）；深浅主题各自生成箭头（深色文件不同）"
@@ -125,7 +136,7 @@
   {
     "file": "t_bug_quit_confirm.py",
     "code": 0,
-    "seconds": 4.1,
+    "seconds": 3.5,
     "traceback": false,
     "tail": [
       "  ✓ 批量中关窗也杀掉进程",
@@ -136,7 +147,7 @@
   {
     "file": "t_bugfixes.py",
     "code": 0,
-    "seconds": 1.3,
+    "seconds": 1.2,
     "traceback": false,
     "tail": [
       "  ✓ terminate_active() 能杀掉残留渲染进程（含 taskkill /T 杀进程树）",
@@ -147,19 +158,19 @@
   {
     "file": "t_gui_launcher.py",
     "code": 0,
-    "seconds": 8.1,
+    "seconds": 7.9,
     "traceback": false,
     "tail": [
-      "PASS 启动器 8.2 MB | PE Subsystem=2（GUI 子系统，双击不弹黑窗） | 未打包时定位到项目根 | exe 被复制到别处时不乱猜（返回 None → 弹提示） | 解释器 = mathviz/.venv/Scripts/pythonw.exe | 启动器 825 ms 内退出（不常驻，不占内存） | GUI 窗口已出现（标题「MathViz — 课件转数学动画（DeepSeek × Manim）」） | 项目 logs\\console.log 新增启动记录"
+      "PASS 启动器 8.2 MB | PE Subsystem=2（GUI 子系统，双击不弹黑窗） | 未打包时定位到项目根 | exe 被复制到别处时不乱猜（返回 None → 弹提示） | 解释器 = mathviz/.venv/Scripts/pythonw.exe | 启动器 759 ms 内退出（不常驻，不占内存） | GUI 窗口已出现（标题「MathViz — 课件转数学动画（DeepSeek × Manim）」） | 项目 logs\\console.log 新增启动记录"
     ]
   },
   {
     "file": "t_gui_feedback.py",
     "code": 0,
-    "seconds": 7.0,
+    "seconds": 4.6,
     "traceback": false,
     "tail": [
-      "PASS 脱敏：Key 与用户名都已隐去 | 编码往返正常，反馈码 720 字符（0.7 KB） | 换行/多条粘贴都能正确解析 | 邮件链接已预填收件人（china_rock676@163.com） | 邮件链接长度受控（实测 1808 ≤ 1900） | zip 存档可回灌，重复导入自动去重 | 反馈窗口：复制即得码，提示里带作者邮箱 | 描述为空时会被拦下（不会发出空反馈） | 邮件按钮：收件人已填，缺客户端时给出替代方案 | 反馈台：导入成功，当前 2 条，详情含环境与日志 | 反馈台：标记已处理生效，筛选正确 | 导出 CSV（2 行）与 Markdown 正常 | 关于框：有反馈邮箱与入口，现场信息自动带上"
+      "PASS 脱敏：Key 与用户名都已隐去 | 编码往返正常，反馈码 720 字符（0.7 KB） | 换行/多条粘贴都能正确解析 | 邮件链接已预填收件人（china_rock676@163.com） | 邮件链接长度受控（实测 1809 ≤ 1900） | zip 存档可回灌，重复导入自动去重 | 反馈窗口：复制即得码，提示里带作者邮箱 | 描述为空时会被拦下（不会发出空反馈） | 邮件按钮：收件人已填，缺客户端时给出替代方案 | 反馈台：导入成功，当前 2 条，详情含环境与日志 | 反馈台：标记已处理生效，筛选正确 | 导出 CSV（2 行）与 Markdown 正常 | 关于框：有反馈邮箱与入口，现场信息自动带上"
     ]
   }
 ]

@@ -876,7 +876,11 @@ class MainWindow(QMainWindow):
         _qi = self.combo_quality.findData(
             QSettings("MathViz", "MathViz").value("render_quality", "low"))
         if _qi >= 0:
+            # 屏蔽信号：此刻 act_render 尚未创建（_build_menus 在后面才调），
+            # 触发 _apply_quality_ui 会 AttributeError 崩溃
+            self.combo_quality.blockSignals(True)
             self.combo_quality.setCurrentIndex(_qi)
+            self.combo_quality.blockSignals(False)
         top_bar.addWidget(self.combo_quality)
 
         self.combo_layout = QComboBox()
@@ -1132,6 +1136,13 @@ class MainWindow(QMainWindow):
         self.act_generate.triggered.connect(self.on_generate)
         m_run.addAction(self.act_generate)
         m_run.addSeparator()
+        self.act_precheck = QAction("🔍 预检测脚本（不渲染，先体检）", self)
+        self.act_precheck.setShortcut("Ctrl+Shift+V")
+        self.act_precheck.setToolTip(
+            "渲染前先做静态体检：语法错、场景名对不上、MathTex 里混了中文、"
+            "用了没定义的名字 —— 这几类问题跑起来必然失败，现在查只要一秒")
+        self.act_precheck.triggered.connect(self.on_precheck)
+        m_run.addAction(self.act_precheck)
         self.act_quickcheck = QAction("🔎 版式快检（先看定格图）", self)
         self.act_quickcheck.setShortcut("Ctrl+Shift+Q")
         self.act_quickcheck.setToolTip(
@@ -1988,7 +1999,8 @@ class MainWindow(QMainWindow):
                   self.btn_qc, self.chk_range, self.spin_from, self.spin_to):
             b.setEnabled(not busy)
         for a in (self.act_extract, self.act_generate,
-                  self.act_render, self.act_render_hd_once, self.act_quickcheck):
+                  self.act_render, self.act_render_hd_once,
+                  self.act_precheck, self.act_quickcheck):
             a.setEnabled(not busy)
         if not busy:
             self.btn_clear.setEnabled(True)   # 清空按钮不受"有没有内容"限制
@@ -2065,7 +2077,9 @@ class MainWindow(QMainWindow):
         q = self._current_quality()
         label = renderer.QUALITY_LABELS.get(q, q)
         self.btn_render.setText(f"🎬 渲染（{label}）")
-        self.act_render.setText(f"🎬 渲染（{label}）")
+        act = getattr(self, "act_render", None)  # 菜单未建好时（启动早期）跳过
+        if act is not None:
+            act.setText(f"🎬 渲染（{label}）")
 
     def _apply_range_enabled(self):
         on = self.chk_range.isChecked()
@@ -2091,6 +2105,69 @@ class MainWindow(QMainWindow):
             a, b = b, a
         return (a, b)
 
+    # ---------- 渲染预检测：按下渲染/快检之前先做一轮静态体检
+
+    _ERR_LINE_RE = re.compile(r"第\s*(\d+)\s*行")
+
+    def _precheck(self, code: str, what: str = "渲染") -> bool:
+        """渲染/快检之前的体检：必然失败的错误要在按按钮那一刻就说清楚。
+
+        能挡下的都是"跑起来一定崩"的：语法错、场景名对不上、MathTex 里混中文、
+        用了没定义的名字。与其让 manim 起一堆进程再报错，不如现在拦下。
+        返回 True 表示放行（体检通过，或用户选择强行试一次）。
+        """
+        classes = renderer.scene_class_names(code)
+        # 场景名对不上的自救：脚本里只有一个 Scene 子类就直接改用它 ——
+        # 手抄进来的脚本类名常常不是 KP 开头，不改就是白跑一趟。
+        if not self.current_scene_name or (
+                self.current_scene_name not in classes and len(classes) == 1):
+            old = self.current_scene_name
+            self.current_scene_name = classes[0] if len(classes) == 1 else \
+                f"KP{time.strftime('%m%d_%H%M%S')}"
+            self.lbl_scene.setText(f"Scene: {self.current_scene_name}")
+            self._log(f"[预检] 场景名取脚本里的类 {self.current_scene_name}"
+                      + (f"（原来 {old}）" if old else ""))
+
+        ok, msg = validator.check(code, self.current_scene_name or "")
+        if ok:
+            self.editor.mark_error_line(None)   # 清掉上一次的红行号
+            n = renderer.count_plays(code)
+            self._log(f"[预检] {msg}" + (f"，共 {n} 段动画" if n else ""))
+            return True
+
+        line = None
+        m = self._ERR_LINE_RE.search(msg)
+        if m:
+            line = int(m.group(1))
+            self.editor.goto_line(line)
+        self.editor.mark_error_line(line)
+        self._log(f"[预检] {what}前体检没过：{msg}")
+        box = QMessageBox(self)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle(f"{what}预检测未通过")
+        box.setText(f"现在直接跑{what}几乎必然失败：\n\n{msg}")
+        box.setInformativeText(
+            (f"已跳到第 {line} 行（行号标红）。\n" if line else "")
+            + "改完再跑省时间；要是怀疑误判，也可以强行试一次。")
+        force = box.addButton(f"仍要{what}", QMessageBox.ButtonRole.AcceptRole)
+        back = box.addButton("回去改脚本", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(back)
+        box.exec()
+        if box.clickedButton() is force:
+            self._log(f"[预检] 用户选择强行{what}")
+            return True
+        return False
+
+    def on_precheck(self):
+        """菜单里的"光体检不渲染"：改脚本时随手查一下，不用等渲染跑完。"""
+        code = self.editor.toPlainText().strip()
+        if not code:
+            QMessageBox.information(self, "提示", "编辑器里还没有脚本")
+            return
+        if self._precheck(code, "渲染"):
+            QMessageBox.information(self, "预检测通过",
+                                    "静态体检没发现问题，可以渲染了。")
+
     def on_quickcheck(self):
         code = self.editor.toPlainText().strip()
         if not code:
@@ -2101,6 +2178,8 @@ class MainWindow(QMainWindow):
         if not self.current_scene_name:
             self.current_scene_name = f"KP{time.strftime('%m%d_%H%M%S')}"
             self.lbl_scene.setText(f"Scene: {self.current_scene_name}")
+        if not self._precheck(code, "快检"):
+            return
         config.ensure_dirs()
 
         def done(ok, dest, msg):
@@ -2457,6 +2536,7 @@ class MainWindow(QMainWindow):
         self.act_generate.setEnabled(bool(self.chat_plan.strip()))
         self.act_render.setEnabled(has_code)
         self.act_render_hd_once.setEnabled(has_code)
+        self.act_precheck.setEnabled(has_code)
         self.act_quickcheck.setEnabled(has_code)
 
     def _run_worker(self, worker, on_done, on_fail):
@@ -3425,6 +3505,8 @@ class MainWindow(QMainWindow):
         if not self.current_scene_name:
             self.current_scene_name = f"KP{time.strftime('%m%d_%H%M%S')}"
             self.lbl_scene.setText(f"Scene: {self.current_scene_name}")
+        if not self._precheck(code, "渲染"):   # 先体检，别让必然失败的脚本白跑一趟
+            return
         config.ensure_dirs()
 
         title_now = self.current_point_title

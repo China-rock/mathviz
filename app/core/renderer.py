@@ -189,6 +189,14 @@ def _scene_class_names(code: str) -> list[str]:
                 for b in n.bases)]
 
 
+def scene_class_names(code: str) -> list[str]:
+    """对外口径：脚本里定义了哪些 Scene 子类（预检测/渲染前校正场景名要用）。
+
+    只认直接继承 Scene / ThreeDScene 的类 —— 工具类、混入类不算可渲染的入口。
+    """
+    return _scene_class_names(code)
+
+
 def count_plays(code: str) -> int:
     """数一遍脚本里 self.play / self.wait 的调用个数（= manim 的"动画段"数）。
 
