@@ -1,0 +1,43 @@
+# --- 虚拟环境（1.1GB，绝不提交） ---
+.venv/
+venv/
+env/
+
+# --- 密钥（最重要！.env 里有 DeepSeek API Key）---
+.env
+.env.local
+*.key
+
+# --- Python 缓存 ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# --- 运行产物 ---
+media/
+scenes/
+render_work/
+logs/
+cache/          # 生成结果缓存，可随时本地重建，不入库
+versions/       # 脚本版本快照（本地历史，不入库）
+*.mp4
+*.png
+*.gif
+
+# --- 编辑器 / 系统 ---
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# --- 打包产物（几百 MB，全部可由 packaging/ 下的脚本重建）---
+dist/
+build/
+dist_launcher/
+build_launcher/
+# 源码目录用的启动器 exe：packaging/build_launcher.py 生成，不必入库
+MathViz.exe
+
+# assets/ 里的应用图标必须入库（上面的 *.png 规则会误伤），否则别人克隆后窗口没图标
+!assets/*.png
+!assets/*.ico
