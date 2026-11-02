@@ -1024,6 +1024,12 @@ class MainWindow(QMainWindow):
         act_open.setShortcut("Ctrl+O")
         act_open.triggered.connect(self.drop_zone.open_dialog)
         m_file.addAction(act_open)
+        # 示例课件随程序打包（samples/ → _internal/samples/），但那个目录藏得深，
+        # 没人会翻到；给一个入口，新用户不找课件也能立刻上手。
+        act_sample = QAction("打开示例课件", self)
+        act_sample.setToolTip("内置示例（微分中值定理），不用自己准备课件")
+        act_sample.triggered.connect(self.on_open_sample)
+        m_file.addAction(act_sample)
         m_file.addSeparator()
         act_media = QAction("打开成片文件夹", self)
         act_media.setToolTip("已渲染并归档的视频都在这里（media/）")
@@ -2478,6 +2484,31 @@ class MainWindow(QMainWindow):
             worker.deleteLater()
 
     # ---------- 槽：打开课件 / 提取
+
+    def on_open_sample(self):
+        """载入内置示例课件（samples/）。
+
+        只有一个示例时直接载入，多个时才让你挑 —— 这个入口的意义是
+        "开箱就能跑一遍"，多问一层对话框反而把人挡在门口。
+        """
+        d = config.SAMPLES_DIR
+        files: list[Path] = []
+        if d.is_dir():
+            files = sorted(p for p in d.iterdir()
+                           if p.suffix.lower() in config.COURSE_EXTENSIONS)
+        if not files:
+            QMessageBox.information(self, "没有示例课件",
+                                    f"没在示例目录里找到课件文件：\n{d}")
+            return
+        if len(files) == 1:
+            path = str(files[0])
+        else:
+            path, _ = QFileDialog.getOpenFileName(self, "选择示例课件", str(d),
+                                                  DropZone.FILTER)
+            if not path:
+                return
+        self._log(f"[示例] 载入内置示例课件：{os.path.basename(path)}")
+        self.on_file_chosen(path)
 
     def on_file_chosen(self, path: str):
         """投放区（点击或拖拽）的统一入口：先过格式与大小两道闸门，再解析。"""

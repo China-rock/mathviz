@@ -59,6 +59,9 @@ ENV_FILE = DATA_DIR / ".env"
 ENV_FILE_FALLBACK = APP_DIR / ".env"
 
 ICON_FILE = APP_DIR / "assets" / "mathviz-icon-v2.ico"
+# 内置示例课件：开发时是项目里的 samples/，打包后由 MathViz.spec 的 datas
+# 放进 _internal/samples/（APP_DIR 在两种形态下都指向"资源根"，所以路径一致）。
+SAMPLES_DIR = APP_DIR / "samples"
 SCENES_DIR = DATA_DIR / "scenes"
 OUTPUT_MEDIA_DIR = DATA_DIR / "media"                # 成片归档（用户目录）
 
