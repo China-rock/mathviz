@@ -1,0 +1,12 @@
+# MathViz 依赖清单
+# 安装：uv pip install -r requirements.txt   （或 pip install -r requirements.txt）
+# 注意：本项目锁定 Python 3.12（manim 官方要求 >=3.11，3.12 兼容性验证最充分）
+
+manim>=0.22.0               # 不要用 manim[typst]：typst 额外 65MB，本项目走 LaTeX 通道，代码里零引用
+imageio-ffmpeg>=0.5.0
+PySide6>=6.8
+openai>=1.60.0
+python-pptx>=1.0.0
+pypdf>=5.0.0
+python-docx>=1.1.0
+matplotlib>=3.8          # 公式编辑器的实时预览（mathtext，不需要本机 LaTeX）
