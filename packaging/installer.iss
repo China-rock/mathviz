@@ -11,7 +11,7 @@
 ;     所以安装结束时检测一次，缺就引导去装。
 
 #define MyAppName "MathViz"
-#define MyAppVersion "1.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "MathViz"
 #define MyAppURL "https://miktex.org/download"
 #define MyAppExeName "MathViz.exe"
@@ -73,8 +73,10 @@ Name: "{group}\卸载 {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]
+; 不带 skipifsilent：程序内更新走的就是静默安装，装完要自动把 MathViz 拉起来，
+; 否则用户点完「立即更新」就只剩一个空桌面。
 Filename: "{app}\{#MyAppExeName}"; Description: "现在启动 {#MyAppName}"; \
-    Flags: nowait postinstall skipifsilent
+    Flags: nowait postinstall
 
 [Code]
 function HasTeX(): Boolean;
@@ -91,7 +93,9 @@ var
 begin
   if CurStep = ssPostInstall then
   begin
-    if not HasTeX() then
+    // 静默安装（程序内更新）时不开口提问 —— 那个 MsgBox 会把无人值守的
+    // 更新挂住；缺 LaTeX 的引导留给首次手动安装的向导，以及程序内首次渲染。
+    if (not HasTeX()) and (not WizardSilent()) then
     begin
       if MsgBox('没有检测到 LaTeX（MiKTeX）。' + #13#10 + #13#10 +
                 '数学公式渲染依赖它，首次渲染前需要装一次（约 500 MB，装完重启本软件）。' + #13#10 +

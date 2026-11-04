@@ -52,7 +52,7 @@ DATA_DIR = _data_dir()
 
 # 版本号：安装包（packaging/installer.iss 的 MyAppVersion）与反馈码里的记录都用它，
 # 改版本时两处一起改，否则你收到的反馈会写着旧版本号。
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 # .env 可能两份都有（开发时同源、打包后用户目录优先），逐个找
 ENV_FILE = DATA_DIR / ".env"

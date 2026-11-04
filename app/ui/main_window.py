@@ -23,7 +23,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QCheckBox,
                                QTextBrowser, QTextEdit, QVBoxLayout, QWidget)
 
 from app.core import (cache, config, diagnose, domains, feedback, llm, parser,
-                      renderer, texenv, validator, versions)
+                      renderer, texenv, updater, validator, versions)
 from app.ui import handout, icons
 from app.ui import theme
 from app.ui.batch_dialog import BatchDialog
@@ -32,6 +32,7 @@ from app.ui.first_run import ApiKeyDialog, maybe_notify_tex, tex_ready
 from app.ui.feedback_dialog import FeedbackDialog
 from app.ui.formula_dialog import FormulaDialog
 from app.ui.settings_dialog import SettingsDialog
+from app.ui.update_dialog import CheckWorker, UpdateDialog
 from app.ui.video_canvas import VideoCanvas
 
 
@@ -577,6 +578,13 @@ class MainWindow(QMainWindow):
         self.chat_sessions: list[dict] = []  # 归档的上一场/上几场对话（切换知识点时自动收起）
         self.chat_topic = ""                 # 当前对话属于哪个知识点（空 = 自由对话）
 
+        # 检查更新：_update_checker 是正在跑的线程，_update_available 记住
+        # "已知有新版"（菜单文案要用），_update_dlg 是"正在检查"的小窗
+        self._update_checker = None
+        self._update_available = ""
+        self._update_dlg = None
+        self._update_checking = False
+
         self._build_ui()
         # 批量队列的进度与"停止"放状态栏：跑起来才出现、结束即隐藏，
         # 不占工作区的常驻位置（那排按钮已经够挤了）。
@@ -616,6 +624,8 @@ class MainWindow(QMainWindow):
         self._refresh_versions()    # 版本下拉框（初始只有"当前编辑器"）
         # 首启检查要等窗口画出来之后再弹（构造期弹窗会卡在半初始化的界面上）
         QTimer.singleShot(0, self._first_run)
+        # 开机静默查一次更新：6 小时节流，有新版只改菜单文案，绝不弹窗打扰
+        QTimer.singleShot(6000, self._auto_check_update)
 
     def _render_in_progress(self) -> str:
         """正在渲染就返回一句进度描述，否则返回空串。
@@ -1188,6 +1198,12 @@ class MainWindow(QMainWindow):
 
         # ---- 帮助
         m_help = bar.addMenu("帮助(&H)")
+        self.act_update = QAction("🔄 检查更新…", self)
+        self.act_update.setToolTip(
+            "读 GitHub 上的最新版本；有新版本可以直接在程序里下载并安装，不用开浏览器")
+        self.act_update.triggered.connect(self.on_check_update)
+        m_help.addAction(self.act_update)
+        m_help.addSeparator()
         act_readme = QAction("使用说明（README）", self)
         act_readme.triggered.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(
@@ -1306,6 +1322,178 @@ class MainWindow(QMainWindow):
             self.point_list.setCurrentItem(item)
             self.on_point_activated(item)
 
+    # ---------- 检查更新
+
+    UPDATE_SKIP_KEY = "update_skip_version"
+
+    def _update_settings(self) -> QSettings:
+        return QSettings("MathViz", "MathViz")
+
+    def _auto_check_update(self):
+        """启动 6 秒后静默查一次。
+
+        三条纪律：不弹窗（只改菜单文字）、6 小时节流（GitHub 匿名限流
+        60 次/小时）、查不到就安静记一行日志 —— 断网不是错误，只是没网。
+        """
+        if os.environ.get("QT_QPA_PLATFORM") == "offscreen":
+            return                      # 测试环境不碰网络
+        settings = self._update_settings()
+        last = settings.value("update_last_check", 0)
+        known = str(settings.value("update_known_version", "") or "")
+        if known and updater.is_newer(known, config.APP_VERSION):
+            self._mark_update_available(known)
+        if not updater.should_auto_check(last):
+            return
+        self._check_update(silent=True)
+
+    def on_check_update(self):
+        """菜单入口：手动检查（会弹窗、会给结果）。"""
+        self._check_update(silent=False)
+
+    def _check_update(self, silent: bool):
+        if self._update_checking:
+            return
+        self._update_checking = True
+        self.act_update.setEnabled(False)
+        if not silent:
+            self._show_checking_dialog()
+
+        w = CheckWorker(self)
+        w.done.connect(lambda info, s=silent: self._on_update_checked(info, s))
+        w.fail.connect(lambda err, s=silent: self._on_update_failed(err, s))
+        w.finished.connect(self._on_update_check_finished)
+        self._update_checker = w
+        w.start()
+
+    def _show_checking_dialog(self):
+        from PySide6.QtWidgets import QProgressDialog
+        d = QProgressDialog("正在检查更新…", None, 0, 0, self)
+        d.setWindowTitle("检查更新")
+        d.setWindowModality(Qt.WindowModality.WindowModal)
+        d.setCancelButton(None)          # 一般一两秒，不给取消按钮添乱
+        d.setMinimumDuration(0)
+        d.setAutoClose(False)
+        d.setAutoReset(False)
+        d.show()
+        self._update_dlg = d
+
+    def _hide_checking_dialog(self):
+        d = self._update_dlg
+        self._update_dlg = None
+        if d is not None:
+            d.close()
+            d.deleteLater()
+
+    def _on_update_checked(self, info: dict, silent: bool):
+        settings = self._update_settings()
+        settings.setValue("update_last_check", time.time())
+        latest = str(info.get("version", ""))
+        if not updater.is_newer(latest, config.APP_VERSION):
+            settings.setValue("update_known_version", "")
+            self._update_available = ""
+            if not silent:
+                QMessageBox.information(
+                    self, "检查更新",
+                    f"已是最新版本 {config.APP_VERSION}。")
+            return
+
+        settings.setValue("update_known_version", latest)
+        self._mark_update_available(latest)
+
+        if silent:
+            skipped = str(settings.value(self.UPDATE_SKIP_KEY, "") or "")
+            if skipped and not updater.is_newer(latest, skipped):
+                return                  # 用户说过"这版先跳过"
+            self._log(f"[更新] 有新版本 {latest} —— 帮助 → 🔄 检查更新 里可以升级")
+            return
+        self._show_update_dialog(info)
+
+    def _mark_update_available(self, version: str):
+        self._update_available = version
+        self._refresh_update_action()
+
+    def _refresh_update_action(self):
+        act = getattr(self, "act_update", None)
+        if act is None:
+            return
+        if self._update_checking:
+            act.setText("🔄 检查更新（检查中…）")
+        elif self._update_available:
+            act.setText(f"🔄 检查更新（有新版 {self._update_available}）")
+        else:
+            act.setText("🔄 检查更新…")
+
+    def _on_update_failed(self, err: str, silent: bool):
+        if silent:
+            self._log(f"[更新] 检查失败（不影响使用）：{err}")
+            return
+        box = QMessageBox(self)
+        box.setWindowTitle("检查更新")
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText("没能取到最新版本信息。")
+        box.setInformativeText(f"{err}\n\n也可以到发布页手动下载。")
+        btn_page = box.addButton("打开发布页", QMessageBox.ButtonRole.ActionRole)
+        box.addButton("关闭", QMessageBox.ButtonRole.AcceptRole)
+        box.exec()
+        if box.clickedButton() is btn_page:
+            QDesktopServices.openUrl(QUrl(updater.RELEASE_PAGE))
+
+    def _on_update_check_finished(self):
+        self._update_checking = False
+        self._hide_checking_dialog()
+        self.act_update.setEnabled(True)
+        self._refresh_update_action()
+        w = self._update_checker
+        self._update_checker = None
+        if w is not None:
+            w.deleteLater()
+
+    def _show_update_dialog(self, info: dict):
+        box = UpdateDialog(info, self)
+        if box.exec() != QDialog.DialogCode.Accepted or not box.setup_path:
+            # 「稍后」：记下这一版，下次启动别再来烦
+            self._update_settings().setValue(
+                self.UPDATE_SKIP_KEY, str(info.get("version", "")))
+            return
+        self._install_update(box.setup_path)
+
+    def _install_update(self, setup_path: str):
+        """退出本程序，让安装包接管。
+
+        渲染中不让更新：安装包会替换正在被占用的 exe 与 _internal 下的文件，
+        轻则安装失败，重则留下半新半旧的目录。
+        """
+        detail = self._render_in_progress()
+        if detail:
+            QMessageBox.warning(
+                self, "暂时不能更新",
+                f"{detail}。\n\n等它跑完再来更新 —— 更新会替换程序文件，"
+                "正在跑的渲染会失败。")
+            return
+
+        box = QMessageBox(self)
+        box.setWindowTitle("安装更新")
+        box.setIcon(QMessageBox.Icon.Question)
+        box.setText("现在安装吗？")
+        box.setInformativeText(
+            "会关闭 MathViz、启动安装程序（可能弹一次管理员确认），"
+            "装完自动重新打开。\n\n"
+            "会话记录、脚本、成片、Key 都在用户目录，升级不会动它们。")
+        btn_now = box.addButton("立即安装", QMessageBox.ButtonRole.AcceptRole)
+        box.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
+        box.exec()
+        if box.clickedButton() is not btn_now:
+            return
+
+        try:
+            updater.launch_installer(Path(setup_path))
+        except Exception as e:
+            QMessageBox.warning(self, "安装失败",
+                                f"{e}\n\n可以手动双击安装包：\n{setup_path}")
+            return
+        self._log(f"[更新] 安装程序已启动，本程序退出：{setup_path}")
+        QApplication.quit()
+
     def on_about(self):
         """关于框：宽度按最长一行实测，避免 LaTeX 长路径被折成两行。"""
         text = self._about_text()
@@ -1328,6 +1516,7 @@ class MainWindow(QMainWindow):
         box.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         # 反馈入口就放在这里：用户找「关于」时，往往正是遇到问题想说话的时候
         btn_feedback = box.addButton("问题反馈…", QMessageBox.ButtonRole.ActionRole)
+        btn_update = box.addButton("检查更新…", QMessageBox.ButtonRole.ActionRole)
         box.addButton("关闭", QMessageBox.ButtonRole.AcceptRole)
         # 用「文本 label 自己的字体」实测最长一行的像素宽 ——
         # 消息框文本的字号比窗口默认字体大，用窗口字体量会少算近一半，
@@ -1352,6 +1541,8 @@ class MainWindow(QMainWindow):
         box.exec()
         if box.clickedButton() is btn_feedback:
             self.on_feedback()
+        elif box.clickedButton() is btn_update:
+            self.on_check_update()
 
     def on_feedback(self):
         """打开问题反馈窗口。带上当前状态，省得对方还要解释在做什么。"""
@@ -1374,7 +1565,7 @@ class MainWindow(QMainWindow):
         except Exception:
             ver = "未安装（无法渲染）"
         latex = shutil.which("latex") or texenv.latex_dir() or "未找到"
-        return ("MathViz：课件 → DeepSeek → Manim 数学动画。\n"
+        return (f"MathViz {config.APP_VERSION}：课件 → DeepSeek → Manim 数学动画。\n"
                 f"API Key 来源：{config.api_key_source()}\n"
                 f"Manim 版本：{ver}\n"
                 f"LaTeX：{latex}\n"
