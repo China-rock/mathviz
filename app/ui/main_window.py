@@ -767,7 +767,11 @@ class MainWindow(QMainWindow):
         self.btn_extract.clicked.connect(self.on_extract)
         self.point_list = QListWidget()
         self.point_list.setMouseTracking(True)   # 不按键也能收到 itemEntered
+        # 允许多选：Ctrl 点选 / Shift 连选，选中两个以上就能「🧩 整合」成一支动画
+        self.point_list.setSelectionMode(
+            QAbstractItemView.SelectionMode.ExtendedSelection)
         self.point_list.itemDoubleClicked.connect(self.on_point_activated)
+        self.point_list.itemSelectionChanged.connect(self._update_merge_btn)
         self.point_list.setStyleSheet(theme.list_qss(theme.LIGHT))
         self._build_kp_send_button()
 
@@ -775,8 +779,15 @@ class MainWindow(QMainWindow):
         lv.addWidget(self.lbl_file)
         lv.addWidget(self.btn_extract)
         kp_head = QHBoxLayout()
-        kp_head.addWidget(QLabel("知识点（双击或点 ➜ 送入对话确认）："))
+        kp_head.addWidget(QLabel("知识点（双击送入；多选可整合）："))
         kp_head.addStretch(1)
+        self.btn_merge = QPushButton("🧩 整合")
+        self.btn_merge.setEnabled(False)
+        self.btn_merge.setToolTip(
+            "选中 2 个以上知识点（Ctrl 点选 / Shift 连选）→ 点这里合并成一场对话，\n"
+            "AI 会先理清它们的关系（递进 / 并列 / 因果），再给出一份统一的呈现清单。")
+        self.btn_merge.clicked.connect(self.on_merge_points)
+        kp_head.addWidget(self.btn_merge)
         self.btn_batch = QPushButton("🗂 批量")
         self.btn_batch.setEnabled(False)
         self.btn_batch.setToolTip(
@@ -1994,7 +2005,7 @@ class MainWindow(QMainWindow):
                   self.btn_render, self.btn_send,
                   self.btn_clear, self.chk_revise,
                   self.combo_chat, self.btn_new_chat, self.btn_formula,
-                  self.btn_more, self.btn_batch, self.cmb_version,
+                  self.btn_more, self.btn_batch, self.btn_merge, self.cmb_version,
                   self.btn_ver_revert, self.btn_ver_diff, self.btn_ver_save,
                   self.btn_qc, self.chk_range, self.spin_from, self.spin_to):
             b.setEnabled(not busy)
@@ -2538,6 +2549,7 @@ class MainWindow(QMainWindow):
         self.act_render_hd_once.setEnabled(has_code)
         self.act_precheck.setEnabled(has_code)
         self.act_quickcheck.setEnabled(has_code)
+        self._update_merge_btn()   # 整合按钮跟着"选了几个"走
 
     def _run_worker(self, worker, on_done, on_fail):
         self._worker = worker
@@ -3155,6 +3167,7 @@ class MainWindow(QMainWindow):
                 QListWidgetItem(f"{p['title']}{level}", self.point_list)
             self.tabs.setCurrentIndex(0)
             self._refresh_point_marks()   # 标出哪些知识点已有旧稿可复用
+            self._update_merge_btn()      # 列表换了一批，整合按钮重新计数
             self._log("[知识点] 提取完成，双击条目送入对话，确认后生成脚本")
 
         def fail(err):
@@ -3267,6 +3280,8 @@ class MainWindow(QMainWindow):
         self._append_chat("system", f"切回「{self.chat_topic}」的对话")
         for role, text in s.get("bubbles", []):
             self._append_chat(role, text)
+        # 左栏选中行跟着切：否则生成脚本会照着上一场对话的知识点走（串台）
+        self._sync_point_selection(self.chat_topic)
         self._log(f"[对话] 已切回「{self.chat_topic}」")
         self._refresh_buttons()
 
@@ -3281,7 +3296,7 @@ class MainWindow(QMainWindow):
         self._refresh_chat_combo()
         self._log("[对话] 已开一场新对话（旧的仍可从下拉框切回）")
 
-    def _ensure_chat_topic(self, topic: str):
+    def _ensure_chat_topic(self, topic: str, label: str = "新知识点"):
         """换知识点就换一场对话：旧的自动收起，界面立刻干净。
 
         这样做是因为：AI 的策划是"看着整段对话历史"来的，留着上一个知识点的
@@ -3299,8 +3314,9 @@ class MainWindow(QMainWindow):
         self.chat_topic = topic
         self._append_chat(
             "system",
-            f"新知识点：{topic}"
+            f"{label}：{topic}"
             + ("（上一场对话已收进上方「对话」下拉框）" if archived else ""))
+        self._sync_point_selection(topic)
         self._refresh_chat_combo()
         self._refresh_buttons()
 
@@ -3408,31 +3424,128 @@ class MainWindow(QMainWindow):
             msg += f"（{kp['description']}）"
         self._send_message(msg)
 
+    # ---------- 槽：多选知识点 → 整合成一支动画
+
+    def _update_merge_btn(self):
+        """选中两个以上知识点，「🧩 整合」才有意义。"""
+        btn = getattr(self, "btn_merge", None)
+        if btn is None:
+            return
+        n = len(self.point_list.selectedItems())
+        btn.setEnabled(n >= 2)
+        btn.setText(f"🧩 整合（{n}）" if n >= 2 else "🧩 整合")
+
+    @staticmethod
+    def _merged_topic(kps: list[dict]) -> str:
+        """合并后的对话主题：两个用"与"，更多用"等 N 个知识点"，控制在 30 字内。
+
+        这个主题会一路用到缓存键、成片文件名和场景标题上，所以宁可短。
+        """
+        names = [k.get("title", "").strip() for k in kps if k.get("title", "").strip()]
+        if not names:
+            return "整合知识点"
+        if len(names) == 1:
+            topic = names[0]
+        elif len(names) == 2:
+            topic = f"{names[0]} 与 {names[1]}"
+        else:
+            topic = f"{names[0]} 等 {len(names)} 个知识点"
+        return topic if len(topic) <= 30 else topic[:29] + "…"
+
+    def on_merge_points(self):
+        """把多个知识点并入同一场对话：AI 先理清关系，再给一份统一呈现清单。"""
+        kps = self._selected_points()
+        if len(kps) < 2:
+            QMessageBox.information(
+                self, "先多选几个知识点",
+                "用 Ctrl 点选、或 Shift 连选 2 个以上知识点，再点「🧩 整合」。\n"
+                "只做一个知识点不用整合，双击它就行。")
+            return
+        if not config.get_api_key():
+            QMessageBox.warning(self, "未配置 Key",
+                                "整合知识点要让 AI 排讲解顺序，请先配置 DeepSeek API Key。")
+            return
+
+        topic = self._merged_topic(kps)
+        self._ensure_chat_topic(topic, label="整合知识点")
+        lines = []
+        for i, k in enumerate(kps, 1):
+            line = f"{i}. 《{k['title']}》"
+            if k.get("description"):
+                line += f"：{k['description']}"
+            if k.get("level"):
+                line += f"（{k['level']}）"
+            lines.append(line)
+        msg = (f"我想把这 {len(kps)} 个知识点整合成一支动画。请先判断它们的逻辑关系"
+               "（递进 / 并列 / 因果），据此排出一条讲得通的顺序，"
+               "让前一个知识点自然引出后一个，最后给出完整【呈现清单】：\n"
+               + "\n".join(lines))
+        self._log(f"[整合] {len(kps)} 个知识点合并为一场对话：{topic}")
+        self.tabs.setCurrentIndex(1)   # 切到对话页，让人看得见 AI 在整合什么
+        self._send_message(msg)
+
     # ---------- 槽：生成脚本
 
     def _selected_point(self) -> dict | None:
         row = self.point_list.currentRow()
         return self.knowledge_points[row] if 0 <= row < len(self.knowledge_points) else None
 
+    def _selected_points(self) -> list[dict]:
+        """多选出来的知识点，按列表顺序（Ctrl/Shift 选的那一组）。"""
+        rows = sorted(self.point_list.row(i) for i in self.point_list.selectedItems())
+        return [self.knowledge_points[r] for r in rows
+                if 0 <= r < len(self.knowledge_points)]
+
+    def _sync_point_selection(self, topic: str):
+        """让左栏选中行跟着当前对话走；没有同名知识点就清空选中。
+
+        不同步的话，切回旧对话后左栏还停在上一个知识点上，
+        生成脚本时就会"拿错人"（生成上一场对话的脚本）。
+        """
+        for i, kp in enumerate(self.knowledge_points):
+            if kp.get("title", "") == topic:
+                self.point_list.setCurrentRow(i)
+                return
+        self.point_list.clearSelection()
+        self.point_list.setCurrentRow(-1)
+
+    def _generate_subject(self) -> tuple[str, str, str]:
+        """决定这次给谁生成脚本：返回 (标题, 描述, 难度)。
+
+        标题为空 = 纯对话模式，还需要先提炼一个短标题。
+        **当前对话的主题优先于左栏选中行** —— 切回历史对话时，左栏可能还停在
+        上一场的知识点上；按选中行生成就会串台，生成的不是眼前这场对话的脚本。
+        """
+        kp = self._selected_point()
+        topic = (self.chat_topic or "").strip()
+        if topic == "自由对话":      # 默认占位名，不是真主题（否则成片会叫这个名字）
+            topic = ""
+        plan = self.chat_plan.strip()
+        if topic and (kp is None or kp.get("title", "") != topic):
+            return topic, plan, ""
+        if kp:
+            return kp["title"], kp.get("description") or plan, kp.get("level", "")
+        return "", plan, ""
+
     def on_generate(self):
         """按对话确认的呈现清单生成脚本。
 
-        - 左侧选中了知识点 → 直接以它为标题；
-        - 纯对话模式（无课件 / 未选知识点）→ 先让 AI 把用户的描述提炼成一个
+        - 当前对话有主题（切回的历史对话 / 双击知识点 / 整合多个知识点）→ 用它；
+        - 左侧选中了知识点且与对话主题一致 → 用它的标题与描述；
+        - 纯对话模式（既无主题也无选中）→ 先让 AI 把用户的描述提炼成一个
           简短知识点名，脚本与成片都用它命名（缓存也因此更容易命中）。
         """
-        kp = self._selected_point()
+        title, description, level = self._generate_subject()
         plan = self.chat_plan.strip()
-        if not plan and not kp:
+        if not title and not plan:
             QMessageBox.information(
                 self, "提示",
                 "请先在中间的对话窗口确认内容：\n"
                 "直接输入想学的知识点，或双击左侧知识点让它先出一份「呈现清单」。")
             return
 
-        if kp:
-            self._start_generate(kp["title"], kp.get("description") or plan,
-                                 kp.get("level", ""))
+        if title:
+            self._start_generate(title, description, level)
             return
 
         user_text = "\n".join(m["content"] for m in self.chat_history
